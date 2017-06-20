@@ -1,0 +1,80 @@
+---
+title: "HAR_Prediction"
+author: "F W"
+date: "June 17, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret); library(randomForest)
+```
+
+## Overview
+When people use devices, such as Jawbone Up, Nike FuelBank, and Fitbit, to collect data about their personal activities, they regularly get the information about how much of a particular activity they do. However, they rarely know about how well they do it. As a Coursera course project assignment, this document is written to address the prediction of the manner in which people did their exercise. We'll use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants, who were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+## Data preperation
+```{r loaddata}
+urlTrainData <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlTestData <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(urlTrainData), na.strings = c("NA","#DIV/0",""))
+testing <- read.csv(url(UrlTestData), na.strings = c("NA","#DIV/0",""))
+dim(training); dim(testing)
+```
+
+The columns 1 to 7 of both datasets are ID or other information that are not related with the classe predictions. We are going to remove these columns.
+
+``` {r}
+training <- subset(training, select=-c(1:7))
+testing <- subset(testing, select=-c(1:7))
+```
+
+There are a lot of columns in the testing dataset with null data. We need to remove these columns from both testing and training datasets. They would not be meaningful predictors in our model otherwise.
+``` {r}
+NonNaCol <- names(testing[,colSums(is.na(testing))==0])
+testing <- testing[,c(NonNaCol)]
+NonNaCol <- NonNaCol[!NonNaCol == "problem_id"]
+training <- training[,c(NonNaCol,"classe")]
+```
+
+We will also remove both those predictors with low variance and those predictors with high correlations, if there is any.
+```{r}
+ColZeroVar <- nearZeroVar(training, saveMetrics = TRUE)
+# turns out all variables are good in terms of variance.
+table(ColZeroVar$nzv)
+ColHighCorr <- findCorrelation(abs(cor(training[,-dim(training)[2]])),.9)
+training <- training[,-ColHighCorr]
+```
+
+We will then Split the training dataset. 70% is used for training and the rest is used for in-sample testing.
+```{r}
+set.seed(1233)
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=FALSE)
+inTest <- training[-inTrain,]
+training <- training[inTrain,]
+dim(training); dim(inTest)
+```
+
+## Trainning Model
+In order to acqure high accuracy, we'll start using random forest as our first model. 
+``` {r}
+rf <- randomForest(classe ~ ., data = training, importance = TRUE)
+rf
+pred <- predict(rf, newdata = inTest)
+confusionMatrix(pred, inTest$classe)
+```
+
+The analysis returns an accuracy of 99.3%. This is quite satisfied. By ploting the important predictors, we can understand more about the prediction and the result. 
+
+``` {r}
+varImpPlot(rf, main="Model Variable Importance")
+```
+
+## Prediction
+Using the model we created above, we can apply it to predict the 20 observations in the testing dataset.
+``` {r}
+pred <- predict(rf, newdata = testing)
+pred
+```
